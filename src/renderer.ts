@@ -43,7 +43,31 @@ export class Renderer {
         const player = PLAYERS[index];
         const activePlayerSpan = document.querySelector('.active-player span') as HTMLElement;
         activePlayerSpan.innerText = player;
+        const activePlayerBase = document.querySelector('.player-base.highlight');
+        if(activePlayerBase)
+        activePlayerBase.classList.remove('highlight');
 
         document.querySelector(`[player-id="${player}"].player-base`).classList.add('highlight');
+    }
+    static enableDice(){
+        diceButtonElement.removeAttribute('disabled');
+    }
+    static disableDice(){
+        diceButtonElement.setAttribute('disabled','');
+    }
+    static highlightPieces(player:'P1'|'P2', pieces:number[]){
+        pieces.forEach(piece=>{
+            const pieceElement = playerPiecesElements[player][piece];
+            pieceElement.classList.add('highlight');
+        })
+    }
+    static unhighlightPieces(){
+        document.querySelectorAll('.player-piece.highlight').forEach(el=>{
+            el.classList.remove('highlight');
+        })
+    }
+    static setDiceValue(value:number){
+        const el = document.querySelector('.dice-value') as HTMLElement;
+        el.innerHTML=value.toString();
     }
 }

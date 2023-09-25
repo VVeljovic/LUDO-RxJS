@@ -78,6 +78,9 @@
     cursor: pointer;
     font-size: 16px;
 }
+.btn:disabled{
+    opacity: 0.5;
+}
 .btn-dice{
     background-color: #009d60;
     color: white;
@@ -86,4 +89,8 @@
     display: flex;
     justify-content: space-between;
     margin-top: 15px;
+}
+.dice-value{
+    font-size: 24px;
+    font-weight: bold;
 }
