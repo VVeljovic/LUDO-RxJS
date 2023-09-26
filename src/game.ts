@@ -119,13 +119,15 @@ export class Game{
             switchMap((pieceNumber) => {
                 if (player === 'P1' || player === 'P2') {
                     const currentPosition = this.currentPositions[player][pieceNumber];
-                    if (BASE_POSITIONS[player].includes(currentPosition)) {
+                    if (BASE_POSITIONS[player].includes(currentPosition) &&this.diceValue===6 && this.state===STATE.DICE_ROLLED) {
                         // Ako je trenutna pozicija uključena u BASE_POSITIONS, postavite na START_POSITIONS
                         this.setPiecePosition(player, pieceNumber, START_POSITIONS[player]);
                         this.state = STATE.DICE_NOT_ROLLED;
                     } else {
                         // Inače, pozovite movePiece
+                        if(this.state===STATE.DICE_ROLLED)
                         return this.movePiece(player, pieceNumber, this.diceValue); // Poziv funkcije movePiece sa player i brojem piece-a
+                        else return of(null);
                     }
                 }
                 return of(null); // Vraćamo null kao rezultat ako nema akcije
