@@ -1,7 +1,7 @@
 import { currentPositions } from "./interfaces"
 import { Renderer, diceButtonElement, playerPieceElement, playerPiecesElements, resetButtonElement } from "./renderer";
 import { BASE_POSITIONS, HOME_ENTRANCE, HOME_POSITIONS, PLAYERS, SAFE_POSITIONS, START_POSITIONS, STATE, TURNING_POINTS } from "./constants";
-import { Observable, Subscription, concatMap, filter, from, fromEvent, interval, map, mergeMap, of, switchMap, takeUntil, takeWhile, tap } from "rxjs";
+import { Observable, Subscription, combineLatest, concatMap, debounceTime, distinctUntilChanged, filter, finalize, from, fromEvent, interval, map, mergeMap, of, switchMap, takeUntil, takeWhile, tap } from "rxjs";
 export class Game{
     currentPositions : currentPositions= {
         P1:[],
@@ -39,34 +39,146 @@ export class Game{
             Renderer.disableDice();
         }
     }
-    constructor(){
+    startGame()
+    {
+        console.log('a');
         this.listenDiceClick();
         this.listenResetClick();
         this.listenPieceClick();
-        this.resetGame.subscribe();
-        
+        this.resetGame();
     }
-    listenDiceClick(){
-      
-       const diceClickObservable = fromEvent(diceButtonElement, 'click').pipe(
-        map(() => Math.floor(Math.random() * 7))
-      );
-  
-      diceClickObservable.subscribe((diceValue) => {
-        console.log('dice clicked');
-        this.diceValue = diceValue;
-        this.state = STATE.DICE_ROLLED;
-  
-        this.checkForEligiblePieces();
-      });
-    
+    listenDiceClick()
+    {
+        const buttonClick$ = fromEvent(diceButtonElement,'click').pipe(
+            debounceTime(300), //Ignorise brze uzastopne klikove
+            distinctUntilChanged(),//Ignorisanje uzastopnih istih klikova
+        );
+            buttonClick$.subscribe(() => {
+                this.onDiceClick();
+            });
     }
-    onDiceClick(){
-        console.log('dice clicked');
-        this.diceValue=Math.floor(Math.random()*7);
-        this.state = STATE.DICE_ROLLED;
-
+    onDiceClick()
+    {
+        console.log('dice is clicked');
+        this.diceValue=Math.floor(Math.random() * 6) + 1;
+        this.state=STATE.DICE_ROLLED;
         this.checkForEligiblePieces();
+    }
+    listenResetClick(){
+        const resetClick$ = fromEvent(resetButtonElement,'click').pipe(
+            tap(()=>{
+                this.resetGame();
+            })
+        ).subscribe();
+    }
+    resetGame(){
+        const resetGame$ = of(null).pipe(
+            switchMap(() => {
+              this.currentPositions = structuredClone(BASE_POSITIONS);
+          
+              return combineLatest(
+                PLAYERS.map(player => from([0, 1, 2, 3]).pipe(
+                  map(piece => {
+                    if(player=='P1'||player==='P2')
+                    this.setPiecePosition(player, piece, BASE_POSITIONS[player][piece]);
+                  })
+                ))
+              );
+            })
+        );
+        resetGame$.subscribe({
+            complete: () => {
+              // Sve figure su postavljene na početne pozicije
+              this.turn = 0;
+              this.state = STATE.DICE_NOT_ROLLED;
+              console.log('Game reset completed.');
+            }
+          });
+    }
+    listenPieceClick(){
+        const pieceClick$ = fromEvent(playerPieceElement,'click').pipe(
+            filter((event)=>{
+                const target = event.target as HTMLElement;
+                return target.classList.contains('player-piece');
+            }),
+            map((event)=>{
+                const target = event.target as HTMLElement;
+                const player = target.getAttribute('player-id');
+                const piece = target.getAttribute('piece');
+                return{player,piece};
+            }),
+            switchMap(({player,piece})=>{
+                return this.handlePieceClick(player,piece);
+            })
+        )
+        pieceClick$.subscribe(()=>console.log('piece was clicked'));
+    }
+    handlePieceClick(player: string, piece: string) {
+        return of(player).pipe(
+            map(() => parseInt(piece, 10)), // Pretvaranje piece u broj
+            switchMap((pieceNumber) => {
+                if (player === 'P1' || player === 'P2') {
+                    const currentPosition = this.currentPositions[player][pieceNumber];
+                    if (BASE_POSITIONS[player].includes(currentPosition)) {
+                        // Ako je trenutna pozicija uključena u BASE_POSITIONS, postavite na START_POSITIONS
+                        this.setPiecePosition(player, pieceNumber, START_POSITIONS[player]);
+                        this.state = STATE.DICE_NOT_ROLLED;
+                    } else {
+                        // Inače, pozovite movePiece
+                        return this.movePiece(player, pieceNumber, this.diceValue); // Poziv funkcije movePiece sa player i brojem piece-a
+                    }
+                }
+                return of(null); // Vraćamo null kao rezultat ako nema akcije
+            })
+        );
+    }
+    setPiecePosition(player:'P1'|'P2',piece:number,newPosition:number){
+        console.log(player,piece,newPosition);
+        this.currentPositions[player][piece]=newPosition;
+        Renderer.setPiecePosition(player,piece,newPosition);
+       }
+       movePiece(player: 'P1' | 'P2', piece: number, moveBy: number) {
+        const interval$ = interval(200).pipe(
+            takeWhile(() => moveBy > 0),
+            concatMap(() => {
+                this.incrementPiecePosition(player, piece);
+                moveBy--;
+                return of(null); // Vraćanje Observable sa null vrednošću
+            }),
+            finalize(() => {
+                if (moveBy === 0) {
+                    if(this.hasPlayerWon(player))
+                       { alert(`Player ${player} won`); this.resetGame();}
+                       else if(this.checkForKill(player,piece)||this.diceValue === 6)
+                       {
+                            this.state = STATE.DICE_NOT_ROLLED;
+                       }
+                       else
+                    this.changeTurn(); // Poziv incrementTurn kada je moveBy === 0
+                }
+            })
+        );
+        return interval$; // Vraćanje Observable sa intervalom
+    }
+       incrementPiecePosition(player:'P1'|'P2',piece:number){
+        this.setPiecePosition(player,piece,this.getIncrementedPosition(player,piece))
+       }
+       getIncrementedPosition(player:'P1'|'P2',piece:number){
+        const currentPosition = this.currentPositions[player][piece];
+        console.log(currentPosition);
+        if(currentPosition===TURNING_POINTS[player]){
+            return HOME_ENTRANCE[player][0];
+        }
+       else if(currentPosition===51){
+            return 0;
+        }
+       
+            return currentPosition+1;
+       }
+       changeTurn()
+    {
+        this.turn=this.turn===0?1:0;
+            this.state=STATE.DICE_NOT_ROLLED;
     }
     checkForEligiblePieces()
     {
@@ -80,11 +192,6 @@ export class Game{
             this.changeTurn();
         }
     }
-    }
-    changeTurn()
-    {
-        this.turn=this.turn===0?1:0;
-            this.state=STATE.DICE_NOT_ROLLED;
     }
     getEligiblePieces(player:'P1'|'P2'):number[]
     {
@@ -103,141 +210,10 @@ export class Game{
             return true;
         })
     }
-    listenResetClick(){
-        const resetClickObservable = fromEvent(resetButtonElement, 'click').pipe(
-            tap(() => {
-              console.log('reset button clicked');
-              this.resetGame.subscribe();
-            })
-          );
-      
-          resetClickObservable.subscribe();
-        
-    }
-    resetGame = new Observable<void>((observer) => {
-        console.log('reset game');
-        this.currentPositions = structuredClone(BASE_POSITIONS);
-      
-        // Iteriramo kroz PLAYERS i koristimo mergeMap za obradu svakog igrača asinhrono
-        from(PLAYERS).pipe(
-          mergeMap((player) =>
-            // Generišemo brojeve od 0 do 3 za svakog igrača
-            from([0, 1, 2, 3]).pipe(
-              // Ovde možete dodati logiku za postavljanje pozicija igrača
-              map((piece) => {
-                if (player === 'P1' || player === 'P2') {
-                  this.setPiecePosition(player, piece, this.currentPositions[player][piece]);
-                }
-              })
-            )
-          )
-        ).subscribe({
-          complete: () => {
-            // Kada su sve operacije završene, postavite ostala stanja
-            this.turn = 0;
-            this.state = STATE.DICE_NOT_ROLLED;
-            // Emitujemo 'complete' događaj kada je resetiranje igre završeno
-            observer.complete();
-          },
-        });
-      });
-   listenPieceClick(){
-    const pieceClickObservable = fromEvent(playerPieceElement, 'click').pipe(
-        filter((event) => {
-          const target = event.target as HTMLElement;
-          return target.classList.contains('player-piece');
-        }),
-        map((event) => {
-          const target = event.target as HTMLElement;
-          const player = target.getAttribute('player-id');
-          const piece = target.getAttribute('piece');
-          return { player, piece };
-        }),
-        switchMap(({ player, piece }) => {
-          return this.handlePieceClick(player, piece);
-        }),
-        takeUntil(fromEvent(resetButtonElement, 'click'))
-      );
-  
-      pieceClickObservable.subscribe();
-   }
-   onPieceClick(event:Event){
-    const target = event.target as HTMLElement;
-    if(!target.classList.contains('player-piece')){
-        return;
-    }
-    console.log('piece clicked');
-    const player = target.getAttribute('player-id');
-    const piece = target.getAttribute('piece');
-    this.handlePieceClick(player,piece);
-   }
-   handlePieceClick(player: string, piece: string) {
-    return new Observable<void>((observer) => {
-      console.log(player, piece);
-      const pieceNum: number = parseInt(piece, 10);
-      if (player === 'P1' || player === 'P2') {
-        const currentPosition = this.currentPositions[player][pieceNum];
-        if (BASE_POSITIONS[player].includes(currentPosition)) {
-          this.setPiecePosition(player, pieceNum, START_POSITIONS[player]);
-          this.state = STATE.DICE_NOT_ROLLED;
-          observer.complete();
-        } else {
-          Renderer.unhighlightPieces();
-          this.movePiece(player, pieceNum, this.diceValue).subscribe({
-            complete: () => {
-              observer.complete();
-            },
-          });
-        }
-      } else {
-        observer.complete();
-      }
-    });
-  }
-   setPiecePosition(player:'P1'|'P2',piece:number,newPosition:number){
-    this.currentPositions[player][piece]=newPosition;
-    Renderer.setPiecePosition(player,piece,newPosition);
-   }
-   movePiece(player: 'P1' | 'P2', piece: number, moveBy: number): Observable<void> {
-    return new Observable<void>((observer) => {
-      const interval$ = interval(200).pipe(
-        takeWhile(() => moveBy > 0),
-        concatMap(() => {
-          this.incrementPiecePosition(player, piece);
-          moveBy--;
-
-          if (moveBy === 0) {
-            if (this.hasPlayerWon(player)) {
-              alert(`Player:${player} has won!`);
-              this.resetGame.subscribe({
-                complete: () => {
-                  observer.complete();
-                },
-              });
-            } else {
-              const isKill = this.checkForKill(player, piece);
-              if (isKill || this.diceValue === 6) {
-                this.state = STATE.DICE_NOT_ROLLED;
-              }
-              this.changeTurn();
-              observer.complete();
-            }
-          }
-          return of(null);
-        })
-      );
-
-      this.movePieceSubscription = interval$.subscribe();
-    });
-  }
-  private movePieceSubscription: Subscription | undefined;
-  // Dodajte metodu za otkazivanje pretplate ako je potrebno
-  cancelMovePieceSubscription() {
-    if (this.movePieceSubscription) {
-      this.movePieceSubscription.unsubscribe();
-    }
-  }
-   checkForKill(player:'P1'|'P2',piece:number)
+    hasPlayerWon(player:'P1'|'P2'){
+        return [0,1,2,3].every(piece=>this.currentPositions[player][piece]===HOME_POSITIONS[player])
+       }
+       checkForKill(player:'P1'|'P2',piece:number)
    {
     const currentPosition = this.currentPositions[player][piece];
     const opponent = player ==='P1'?'P2':'P1';
@@ -252,23 +228,4 @@ export class Game{
     })
     return kill;
    }
-   hasPlayerWon(player:'P1'|'P2'){
-    return [0,1,2,3].every(piece=>this.currentPositions[player][piece]===HOME_POSITIONS[player])
-   }
-   incrementPiecePosition(player:'P1'|'P2',piece:number){
-    this.setPiecePosition(player,piece,this.getIncrementedPosition(player,piece))
-   }
-   getIncrementedPosition(player:'P1'|'P2',piece:number){
-    const currentPosition = this.currentPositions[player][piece];
-    console.log(currentPosition);
-    if(currentPosition===TURNING_POINTS[player]){
-        return HOME_ENTRANCE[player][0];
-    }
-   else if(currentPosition===51){
-        return 0;
-    }
-   
-        return currentPosition+1;
-   }
 }
-
