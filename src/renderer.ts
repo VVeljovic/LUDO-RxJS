@@ -1,9 +1,9 @@
 import { fromEvent } from "rxjs";
 import { COORDINATES_MAP, PLAYERS, STEP_LENGTH } from "./constants";
-const diceButtonElement = document.querySelector('#dice-btn');
-const resetButtonElement = document.querySelector('button#reset-btn');
-const playerPieceElement = document.querySelector('.player-pieces');
-const playerPiecesElements = {
+export const diceButtonElement = document.querySelector('#dice-btn');
+export const resetButtonElement = document.querySelector('button#reset-btn');
+export const playerPieceElement = document.querySelector('.player-pieces');
+export const playerPiecesElements = {
     P1:document.querySelectorAll('[player-id="P1"].player-piece'),
     P2:document.querySelectorAll('[player-id="P2"].player-piece')
 }

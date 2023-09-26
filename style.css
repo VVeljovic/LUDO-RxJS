@@ -23,6 +23,8 @@
     border-radius: 50px;
     position:absolute;
     transform: translate(50%,50%);
+    transition: all .2s;
+    z-index: 1;
 }
 .player-piece.highlight{
     cursor: pointer;
