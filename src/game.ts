@@ -125,7 +125,7 @@ export class Game{
                         this.state = STATE.DICE_NOT_ROLLED;
                     } else {
                         // Inače, pozovite movePiece
-                        if(this.state===STATE.DICE_ROLLED)
+                        if(this.state===STATE.DICE_ROLLED&&!BASE_POSITIONS[player].includes(currentPosition))
                         return this.movePiece(player, pieceNumber, this.diceValue); // Poziv funkcije movePiece sa player i brojem piece-a
                         else return of(null);
                     }
