@@ -117,3 +117,4 @@ export const STATE = {
     DICE_NOT_ROLLED: 'DICE_NOT_ROLLED',
     DICE_ROLLED: 'DICE_ROLLED',
 }
+export const URL = "http://localhost:3000/players/";

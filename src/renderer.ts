@@ -1,5 +1,6 @@
 import { fromEvent } from "rxjs";
 import { COORDINATES_MAP, PLAYERS, STEP_LENGTH } from "./constants";
+import { Players } from "./interfaces";
 export const diceButtonElement = document.querySelector('#dice-btn');
 export const resetButtonElement = document.querySelector('button#reset-btn');
 export const playerPieceElement = document.querySelector('.player-pieces');
@@ -8,24 +9,8 @@ export const playerPiecesElements = {
     P2:document.querySelectorAll('[player-id="P2"].player-piece')
 }
 export class Renderer {
-    static listenDiceClick(callback:any){
-        const clickObservable = fromEvent(diceButtonElement, 'click');
-    
-        clickObservable.subscribe(callback);
-    }
-    static listenResetClick(callback:any)
-    {
-        const clickObservable = fromEvent(resetButtonElement, 'click');
-    
-        clickObservable.subscribe(callback);
-    }
-    static listenPieceClick(callback:any)
-    {
-        const clickObservable = fromEvent(playerPieceElement, 'click');
-    
-        clickObservable.subscribe(callback);
-    }
-    static setPiecePosition(player:'P1'|'P2',piece:number,newPosition:number)
+  
+    static setPiecePosition(player:Players,piece:number,newPosition:number)
     {
         if(!playerPiecesElements[player]||!playerPiecesElements[player][piece])
         {
@@ -55,7 +40,7 @@ export class Renderer {
     static disableDice(){
         diceButtonElement.setAttribute('disabled','');
     }
-    static highlightPieces(player:'P1'|'P2', pieces:number[]){
+    static highlightPieces(player:Players, pieces:number[]){
         pieces.forEach(piece=>{
             const pieceElement = playerPiecesElements[player][piece];
             pieceElement.classList.add('highlight');
