@@ -1,91 +1,80 @@
 import { Player, Players, currentPositions } from "./interfaces"
 import { Renderer, diceButtonElement, playerPieceElement, playerPiecesElements, resetButtonElement } from "./renderer";
 import { BASE_POSITIONS, HOME_ENTRANCE, HOME_POSITIONS, PLAYERS, SAFE_POSITIONS, START_POSITIONS, STATE, TURNING_POINTS,URL } from "./constants";
-import { Observable, Subscription, catchError, combineLatest, concatMap, debounceTime, distinctUntilChanged, filter, finalize, from, fromEvent, interval, map, merge, mergeMap, of, switchMap, takeUntil, takeWhile, tap } from "rxjs";
+import { Observable, Subscription, catchError, combineLatest, concatMap, debounceTime, distinctUntilChanged, filter, finalize, from, fromEvent, interval, map, merge, mergeMap, of, switchMap, takeUntil, takeWhile, tap, zip } from "rxjs";
 export class Game{
    
     startGame()
     {
-        console.log('a');
-        this.listenDiceClick();
+       
+        this.listenDiceClick().subscribe(()=>this.onDiceClick()); 
+        this.listenPieceClick().subscribe();
         const resetButtonClick$ =this.listenResetClick();
-        this.listenPieceClick();
         const appStart$ = of(null);
          const resetEvents$ = merge(appStart$,resetButtonClick$);
-
-    
-    resetEvents$.pipe(
-        tap(() => this.resetGame())
+        resetEvents$.pipe(
+        tap(() => this.setStartPosition("P1")),
+        tap(() => this.setStartPosition("P2"))
     ).subscribe();
-
     }
-    updatePlayer(player:string,newData:any):Observable<any>{
-        return from(fetch(URL + player, {
-            method: 'PATCH', 
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(newData),
-          })).pipe(
-            switchMap((response) => {
-              if (!response.ok) {
-                throw new Error('Player data update failed');
-              } else {
-                console.log(response);
-                return from(response.json());
-              }
-            }),
-            catchError((error) => {
-              console.error(error);
-              throw error;
-            })
-          );
-        }
-    listenDiceClick()
+    getPlayers(player:Players):Observable<Player>{
+        const promise = fetch(URL+player).then(response=>{
+            if(!response.ok){
+                throw new Error("Player not found")
+            }
+            else
+            {
+                return response.json();
+            }
+        }).catch(err=>console.log(err))
+        return from(promise);
+    }
+    listenDiceClick():Observable<Event>
     {
         const buttonClick$ = fromEvent(diceButtonElement,'click').pipe(
-            debounceTime(300), //Ignorise brze uzastopne klikove
-            distinctUntilChanged(),//Ignorisanje uzastopnih istih klikova
+            debounceTime(300),
+            
         );
-            buttonClick$.subscribe(() => {
-                this.onDiceClick();
-            });
+            return buttonClick$;
     }
     listenResetClick():Observable<Event>{
         const resetClick$ = fromEvent(resetButtonElement,'click').pipe(
             tap(()=>{
-                this.resetGame();
+                this.setStartPosition("P1"),
+                this.setStartPosition("P2");
             })
         )
         return resetClick$;
     }
-    resetGame(){
-        const player$ = from(PLAYERS as Players[]);
-  const piece$ = from([0, 1, 2, 3]);
+  
 
-  const resetGame$ = merge(
-    player$.pipe(
-      mergeMap(player => piece$.pipe(
-        map(piece => ({ player, piece }))
-      ))
-    )
-  ).pipe(
-    switchMap(({ player, piece }) => {
-      this.currentPositions = structuredClone(BASE_POSITIONS);
-
-      this.setPiecePosition(player, piece, BASE_POSITIONS[player][piece]);
-      return of(null);
-    })
-  );
-
-  resetGame$.subscribe({
-    complete: () => {
-      this.turn = 0;
-      this.state = STATE.DICE_NOT_ROLLED;
-      console.log('Game reset completed.');
-    }
-  });
-    }
+    setStartPosition(player:Players) {
+        const player$ = from([player]);
+        const piece$ = from([0, 1, 2, 3]);
+    
+        
+        const resetGame$ = combineLatest([player$, piece$]).pipe(
+            map(([player, piece]) => {
+                 {
+                    this.currentPositions = structuredClone(BASE_POSITIONS);
+                    
+                   
+                        this.setPiecePosition(player, piece, BASE_POSITIONS[player][piece]);
+                    
+                }
+                return null; 
+            })
+        );
+    
+        resetGame$.subscribe({
+            complete: () => {
+                this.turn = 0;
+                this.state = STATE.DICE_NOT_ROLLED;
+               
+            }
+        });
+    }      
+      
     listenPieceClick(){
         const pieceClick$ = fromEvent(playerPieceElement,'click').pipe(
             filter((event)=>{
@@ -102,31 +91,34 @@ export class Game{
                 return this.handlePieceClick(player,piece);
             })
         )
-        pieceClick$.subscribe(()=>console.log('piece was clicked'));
+        return pieceClick$;
+        
     }
     handlePieceClick(player: string, piece: string) {
         return of(player).pipe(
-            map(() => parseInt(piece, 10)), // Pretvaranje piece u broj
+            map(() => parseInt(piece, 10)),
             switchMap((pieceNumber) => {
-                if (player === 'P1' || player === 'P2') {
+                if (
+                    (this.turn===0&&player==="P1")||(this.turn==1&&player==="P2")
+                ) {
                     const currentPosition = this.currentPositions[player][pieceNumber];
                     if (BASE_POSITIONS[player].includes(currentPosition) &&this.diceValue===6 && this.state===STATE.DICE_ROLLED) {
-                        // Ako je trenutna pozicija uključena u BASE_POSITIONS, postavite na START_POSITIONS
+                        
                         this.setPiecePosition(player, pieceNumber, START_POSITIONS[player]);
                         this.state = STATE.DICE_NOT_ROLLED;
                     } else {
-                        // Inače, pozovite movePiece
+                        
                         if(this.state===STATE.DICE_ROLLED&&!BASE_POSITIONS[player].includes(currentPosition))
-                        return this.movePiece(player, pieceNumber, this.diceValue); // Poziv funkcije movePiece sa player i brojem piece-a
+                        return this.movePiece(player, pieceNumber, this.diceValue);
                         else return of(null);
                     }
                 }
-                return of(null); // Vraćamo null kao rezultat ako nema akcije
+                return of(null);
             })
         );
     }
     setPiecePosition(player:Players,piece:number,newPosition:number){
-        console.log(player,piece,newPosition);
+        
         this.currentPositions[player][piece]=newPosition;
         Renderer.setPiecePosition(player,piece,newPosition);
        }
@@ -136,40 +128,56 @@ export class Game{
             concatMap(() => {
                 this.incrementPiecePosition(player, piece);
                 moveBy--;
-                return of(null); // Vraćanje Observable sa null vrednošću
+                return of(null);
             }),
             finalize(() => {
                 if (moveBy === 0) {
                     if(this.hasPlayerWon(player))
-                       { alert(`Player ${player} won`); 
-                       if(this._turn===0)
-                       {  const p1 : Player ={
-                           id:"P1",
-                           numberOfSix:this.sum1
-                          }
-                          this.updatePlayer(p1.id,p1).subscribe(response=>
-                            response.preventDefault()
-                            
-                            );
-                       }
-                       this.resetGame();}
+                       { 
+                        
+                        const playerType: Players = this._turn === 0 ? "P1" : "P2";
+                            this.getPlayers(playerType).subscribe((response)=>{
+                                
+                                alert(`Player ${playerType} has won and got ${2*response.bet}`);
+                              })
+                       
+                       this.setStartPosition("P1");
+                       this.setStartPosition("P2");}
                        else if(this.checkForKill(player,piece)||this.diceValue === 6)
                        {
                             this.state = STATE.DICE_NOT_ROLLED;
                        }
                        else
-                    this.changeTurn(); // Poziv incrementTurn kada je moveBy === 0
+                    this.changeTurn(); 
                 }
             })
         );
-        return interval$; // Vraćanje Observable sa intervalom
+        return interval$; 
     }
+    getEligiblePieces(player: Players): Observable<number[]> {
+        return of([0, 1, 2, 3]).pipe(
+          map(pieces => pieces.filter(piece => {
+            const currentPosition = this.currentPositions[player][piece];
+      
+            if (currentPosition === HOME_POSITIONS[player]) {
+              return false;
+            }
+            if (BASE_POSITIONS[player].includes(currentPosition) && this.diceValue !== 6) {
+              return false;
+            }
+            if (HOME_ENTRANCE[player].includes(currentPosition) && this._diceValue > HOME_POSITIONS[player] - currentPosition) {
+              return false;
+            }
+            return true;
+          }))
+        );
+      }
        incrementPiecePosition(player:Players,piece:number){
         this.setPiecePosition(player,piece,this.getIncrementedPosition(player,piece))
        }
        getIncrementedPosition(player:Players,piece:number){
         const currentPosition = this.currentPositions[player][piece];
-        console.log(currentPosition);
+       
         if(currentPosition===TURNING_POINTS[player]){
             return HOME_ENTRANCE[player][0];
         }
@@ -188,32 +196,22 @@ export class Game{
     {
         const player = PLAYERS[this.turn];
         if(player ==='P1'||player==='P2')
-        {const eligiblePieces:number[]=this.getEligiblePieces(player);
-        if(eligiblePieces.length){
-            Renderer.highlightPieces(player,eligiblePieces);
-        }
-        else{
-            this.changeTurn();
-        }
+        {this.getEligiblePieces(player).subscribe((players)=>{
+            const eligiblePieces:number[]=players;
+            console.log(eligiblePieces);
+            if(eligiblePieces.length){
+                Renderer.highlightPieces(player,eligiblePieces);
+            }
+            else{
+                this.changeTurn();
+            }
+        });
     }
     }
-    getEligiblePieces(player:Players):number[]
-    {
-        return [0,1,2,3].filter(piece=>{
-            const currentPosition = this.currentPositions[player][piece]
-            if(currentPosition==HOME_POSITIONS[player]){
-                return false;
-            }
-            if(BASE_POSITIONS[player].includes(currentPosition)&& this.diceValue!==6)
-            {
-                return false;
-            }
-            if(HOME_ENTRANCE[player].includes(currentPosition)&& this._diceValue>HOME_POSITIONS[player]-currentPosition){
-                return false;
-            }
-            return true;
-        })
-    }
+
+
+
+
     hasPlayerWon(player:Players){
         return [0,1].every(piece=>this.currentPositions[player][piece]===HOME_POSITIONS[player])
        }
@@ -234,13 +232,8 @@ export class Game{
    }
    onDiceClick()
    {
-       console.log('dice is clicked');
+      
        this.diceValue=Math.floor(Math.random() * 6) + 1;
-       if(this.diceValue===6 && this.turn===0)
-       this.sum1=1;
-       if(this.diceValue===6 && this.turn===1)
-       this.sum2=1;
-       console.log(this.sum1,this.sum2);
        this.state=STATE.DICE_ROLLED;
        this.checkForEligiblePieces();
       
@@ -280,19 +273,5 @@ set state(value){
     {
         Renderer.disableDice();
     }
-}
-_sum1:number=0;
-get sum1(){
-    return this._sum1;
-}
-set sum1(value){
-    this._sum1+=value;
-}
-_sum2:number=0;
-get sum2(){
-    return this._sum2;
-}
-set sum2(value){
-    this._sum2+=value;
 }
 }

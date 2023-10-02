@@ -4,6 +4,6 @@ export interface currentPositions  {
 }
 export interface Player {
     id:Players,
-    numberOfSix:number
+    bet:number
 }
 export type Players = "P1" | "P2";
